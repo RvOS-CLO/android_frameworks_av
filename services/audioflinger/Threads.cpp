@@ -2713,7 +2713,6 @@ void AudioFlinger::PlaybackThread::setVolumeForOutput_l(float left, float right)
 status_t AudioFlinger::PlaybackThread::addTrack_l(const sp<Track>& track)
 {
     status_t status = ALREADY_EXISTS;
-    int intensity;
 
     if (mActiveTracks.indexOf(track) < 0) {
         // the track is newly added, make sure it fills up all its
@@ -2765,12 +2764,8 @@ status_t AudioFlinger::PlaybackThread::addTrack_l(const sp<Track>& track)
             // Unlock due to VibratorService will lock for this call and will
             // call Tracks.mute/unmute which also require thread's lock.
             mLock.unlock();
-            if (property_get_bool("vendor.audio.gaming.enabled", false /* default_value */)) {
-                intensity = static_cast<int>(os::HapticScale::NONE);
-            } else {
-                intensity = AudioFlinger::onExternalVibrationStart(
-                        track->getExternalVibration());
-            }
+            const int intensity = AudioFlinger::onExternalVibrationStart(
+                    track->getExternalVibration());
             std::optional<media::AudioVibratorInfo> vibratorInfo;
             {
                 // TODO(b/184194780): Use the vibrator information from the vibrator that will be
@@ -7349,10 +7344,6 @@ void AudioFlinger::DuplicatingThread::addOutputTrack(MixerThread *thread)
     attributionSource.pid = VALUE_OR_FATAL(legacy2aidl_pid_t_int32_t(
       IPCThreadState::self()->getCallingPid()));
     attributionSource.token = sp<BBinder>::make();
-
-    if (property_get_bool("vendor.audio.gaming.enabled", false /* default_value */))
-        mChannelMask = (audio_channel_mask_t)(mChannelMask | mHapticChannelMask);
-
     sp<OutputTrack> outputTrack = new OutputTrack(thread,
                                             this,
                                             mSampleRate,
@@ -9818,6 +9809,9 @@ status_t AudioFlinger::MmapThread::start(const AudioClient& client,
     audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE;
 
     audio_io_handle_t io = mId;
+    AttributionSourceState adjAttributionSource = AudioFlinger::checkAttributionSourcePackage(
+            client.attributionSource);
+
     if (isOutput()) {
         audio_config_t config = AUDIO_CONFIG_INITIALIZER;
         config.sample_rate = mSampleRate;
@@ -9832,7 +9826,7 @@ status_t AudioFlinger::MmapThread::start(const AudioClient& client,
         ret = AudioSystem::getOutputForAttr(&mAttr, &io,
                                             mSessionId,
                                             &stream,
-                                            client.attributionSource,
+                                            adjAttributionSource,
                                             &config,
                                             flags,
                                             &deviceId,
@@ -9850,7 +9844,7 @@ status_t AudioFlinger::MmapThread::start(const AudioClient& client,
         ret = AudioSystem::getInputForAttr(&mAttr, &io,
                                               RECORD_RIID_INVALID,
                                               mSessionId,
-                                              client.attributionSource,
+                                              adjAttributionSource,
                                               &config,
                                               AUDIO_INPUT_FLAG_MMAP_NOIRQ,
                                               &deviceId,
